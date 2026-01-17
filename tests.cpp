@@ -1,213 +1,144 @@
-#include <ctime>
-#include <iostream>
-#include <cassert>
-#include <vector>
+#include <gtest/gtest.h>
+#include <algorithm>
 #include "environment.hpp"
 
-// Helper to print state for debugging
-void printState(State& s) {
-    std::cout << "  Oxygen: " << s.getCurrentPlayer().getTreasures().size() 
-              << " (held) | Board Size: " << (s.isTerminal() ? "END" : "ACTIVE") << "\n";
+class DeepSeaAdventureTest : public ::testing::Test 
+{
+    protected:
+        void SetUp() override // runs before every TEST_F
+        {
+            srand(42);
+        }
+
+        bool hasMove(const std::vector<MoveType>& moves, MoveType target) 
+        {
+            return std::find(moves.begin(), moves.end(), target) != moves.end();
+        }
+};
+
+TEST_F(DeepSeaAdventureTest, StateImmutabilityCriticalForMCTS) {
+    State rootState(3);
+    int originalPos = rootState.getCurrentPlayer().getPosition();
+    
+    auto moves = rootState.getPossibleMoves(false);
+    ASSERT_FALSE(moves.empty());
+    
+    State childState = rootState.doMove(moves[0]);
+    
+    EXPECT_EQ(rootState.getCurrentPlayer().getPosition(), originalPos);
+    
+    EXPECT_NE(&rootState.getCurrentPlayer(), &childState.getCurrentPlayer());
 }
 
-// TEST 1: The MCTS Integrity Test (State Copying)
-void testStateImmutability() {
-    std::cout << "[TEST] State Immutability (Critical for MCTS)... ";
-    
-    State rootState(3); // 3 Players
-    
-    // Save info from root
-    int rootPlayer = rootState.getCurrentPlayer().getPosition();
-    
-    // Create a child state
-    std::vector<MoveType> moves = rootState.getPossibleMoves(false);
-    State childState = rootState.doMove(moves[0]); // Likely CONTINUE
-    
-    // CHECK: Did the root state change?
-    assert(rootState.getCurrentPlayer().getPosition() == rootPlayer);
-    assert(&rootState.getCurrentPlayer() != &childState.getCurrentPlayer()); // Different memory addresses
-    
-    std::cout << "PASSED\n";
-}
-
-// TEST 2: Oxygen Mechanics
-void testOxygenMechanics() {
-    std::cout << "[TEST] Oxygen Mechanics... ";
-    
-    State s(2);
-    // Force give player treasures to simulate weight
-    // Note: You might need to make 'treasures' public or add a helper for testing
-    // For now, we simulate by running moves until we pick something up
-    
-    // This is hard to unit test without modifying the class to allow setting state manually.
-    // Instead, we verify logic:
-    // If we have 0 items, oxygen shouldn't drop on move.
-    
-    int startOxygen = 25; // Assuming 25 is hardcoded in your header
-    // Create a state where oxygen is exposed or checking it indirectly
-    // (Skipping deep check here, trusting the logic review)
-    
-    std::cout << "SKIPPED (Requires access to private Oxygen var)\n";
-}
-
-// TEST 3: Shrinking Board / Bounds Check
-void testShrinkingBoard() {
-    std::cout << "[TEST] Shrinking Board Logic... ";
-    
+TEST_F(DeepSeaAdventureTest, BoardShrinksAndHandlesBounds) {
     Board b;
-    // Simulate end of round
-    b.flipTile(31); // Last tile
+    b.flipTile(31);
     b.flipTile(30);
     
-    int initialSize = b.getTiles().size(); // 32
-    b.updateBoard(); // Should remove flipped tiles
+    size_t initialSize = b.getTiles().size();
+    b.updateBoard();
     
-    assert(b.getTiles().size() < initialSize);
-    assert(b.getTiles().size() == 30);
+    EXPECT_LT(b.getTiles().size(), initialSize);
+    EXPECT_EQ(b.getTiles().size(), 30);
     
-    // Check access bounds
-    try {
-        bool f = b.isTileFlipped(31); // Should throw
-        assert(false); // Should not reach here
-    } catch (...) {
-        // Expected behavior
-    }
-    
-    std::cout << "PASSED\n";
+    EXPECT_ANY_THROW(b.isTileFlipped(31));
 }
 
-void runGreedyGame() {
-    std::cout << "\n[SIMULATION] Running GREEDY game (Always Collect)...\n";
-    State s(3);
-    int turnCount = 0;
-    
-    // Run the loop
-    while (!s.isTerminal()) {
-        turnCount++;
-        Player& p = s.getCurrentPlayer();
+TEST_F(DeepSeaAdventureTest, GreedyGameSimulation) {
+    State s(3); // 3 players
+    int safetyInterlock = 0;
+
+    while (!s.isTerminal() && safetyInterlock < 1000) {
+        safetyInterlock++;
         
-        // Phase 1: Move (Always Continue)
-        std::vector<MoveType> moves1 = s.getPossibleMoves(false);
-        if (moves1.empty()) break; 
-        
-        MoveType choice1 = moves1[0]; 
-        // Prefer CONTINUE if available
-        if (moves1.size() > 1 && moves1[0] == RETURN) choice1 = moves1[1]; 
-        
-        s = s.doMove(choice1);
+        auto moveChoices = s.getPossibleMoves(false);
+        if (moveChoices.empty()) break;
+
+        MoveType m = hasMove(moveChoices, CONTINUE) ? CONTINUE : moveChoices[0];
+        s = s.doMove(m);
+
         if (s.isTerminal()) break;
 
-        // Phase 2: Action (Always Collect)
-        if (s.getCurrentPlayer().getPosition() > 0) { // Check > 0 to avoid Submarine farming
-             std::vector<MoveType> moves2 = s.getPossibleMoves(true);
-             if (!moves2.empty()) {
-                 MoveType choice2 = LEAVE_TREASURE;
-                 for(auto m : moves2) {
-                     if (m == COLLECT_TREASURE) choice2 = COLLECT_TREASURE;
-                 }
-                 s = s.doMove(choice2);
-             }
-        }
-        
-        if (turnCount > 100) {
-            std::cout << "FAILED: Oxygen not dropping!\n";
-            return;
-        }
-    }
-    
-    std::cout << "SUCCESS: Game finished in " << turnCount << " turns.\n";
-
-    // --- VERIFICATION STEP ---
-    std::cout << "\n--- FINAL SCOREBOARD ---\n";
-    
-    // We expect Oxygen to be 0
-    // Note: Since 'oxygen' is private, we can infer it from the terminal state or add a getter.
-    // Ideally, add 'int getOxygen() { return oxygen; }' to State class.
-
-    if (s.getOxygen() == 0) {
-        std::cout << "[OK] Oxygen depleted to 0.\n";
-    } else {
-        std::cout << "[ERROR] Game ended but Oxygen is " << s.getOxygen() << "\n";
+        auto actionChoices = s.getPossibleMoves(true);
+        MoveType a = hasMove(actionChoices, COLLECT_TREASURE) ? COLLECT_TREASURE : LEAVE_TREASURE;
+        s = s.doMove(a);
     }
 
-    // CHECK 2: All players should be dead (because they never turned back)
-    bool allDead = true;
+    EXPECT_EQ(s.getOxygen(), 0) << "Oxygen should be depleted in a greedy game.";
     for (auto& p : s.getPlayers()) {
-        std::cout << "Player Pos: " << p.getPosition() 
-                  << " | Dead: " << (p.getIsDead() ? "YES" : "NO") 
-                  << " | Points: " << p.getPoints() << "\n";
-                  
-        if (!p.getIsDead()) allDead = false;
-        
-        // Greedy players shouldn't have points because they died holding the loot.
-        if (p.getPoints() > 0) {
-             std::cout << "[ERROR] Dead player has points! (Conversion bug)\n";
-        }
-    }
-
-    if (allDead) {
-        std::cout << "[OK] All greedy players died as expected.\n";
-    } else {
-        std::cout << "[ERROR] Some players survived? Logic check needed.\n";
+        EXPECT_TRUE(p.getIsDead()) << "Greedy players who never return should die.";
+        EXPECT_EQ(p.getPoints(), 0) << "Dead players should score 0 points.";
     }
 }
 
-// TEST 4: Full Random Game Simulation (The "Fuzz" Test)
-void runRandomGame() {
-    std::cout << "\n[SIMULATION] Running full random game...\n";
-    State s(3);
-    int turnCount = 0;
-    
-    while (!s.isTerminal()) {
-        turnCount++;
-        Player& p = s.getCurrentPlayer();
-        
-        // 1. Get Moves
-        // We need to know if we moved this turn. 
-        // In MCTS, you track node depth/state. Here we approximate.
-        // NOTE: Your getPossibleMoves relies on external logic to know 'movedThisTurn'.
-        // For this test, we assume phase 1 (move) then phase 2 (action).
-        
-        // Phase 1: Move
-        std::vector<MoveType> moves1 = s.getPossibleMoves(false);
-        if (moves1.empty()) break; // Should be End of Game
-        
-        MoveType choice1 = moves1[rand() % moves1.size()];
-        s = s.doMove(choice1);
-        
-        if (s.isTerminal()) break;
+TEST_F(DeepSeaAdventureTest, NoCollectionAtSubmarine) {
+    State s(2); 
+    ASSERT_EQ(s.getCurrentPlayer().getPosition(), 0);
 
-        // Phase 2: Action (only if not at sub)
-        if (choice1 != END && s.getCurrentPlayer().getPosition() != 0) {
-             std::vector<MoveType> moves2 = s.getPossibleMoves(true);
-             if (!moves2.empty()) {
-                 MoveType choice2 = moves2[rand() % moves2.size()];
-                 s = s.doMove(choice2);
-             }
-        }
-        
-        if (turnCount > 500) {
-            std::cout << "FAILED: Game stuck in infinite loop (Oxygen not dropping?)\n";
-            return;
-        }
-    }
-    
-    std::cout << "Game finished in " << turnCount << " turns.\n";
-    
-    // Verify scores
-    std::cout << "Final Scores:\n";
-    for (auto& player : s.getPlayers())
-    {
-        std::cout<<player.getPoints()<<"\n";
+    auto actions = s.getPossibleMoves(true);
+
+    for (auto a : actions) {
+        EXPECT_NE(a, COLLECT_TREASURE) << "Should not be able to collect treasure at position 0.";
     }
 }
 
-int main() {
-    std::srand(std::time(0));
+TEST_F(DeepSeaAdventureTest, MovementSkipsOccupiedTiles) {
+    State s(2);
+    
+    s = s.doMove(CONTINUE); // Roll
+    
+    int p2_start = s.getCurrentPlayer().getPosition();
+    s = s.doMove(CONTINUE); 
+    
+    int p2_end = s.getCurrentPlayer().getPosition();
+    EXPECT_NE(p2_end, 1) << "Player 2 should have skipped the tile occupied by Player 1.";
+}
 
-    testStateImmutability();
-    testShrinkingBoard();
-    runGreedyGame();
-    runRandomGame();
-    return 0;
+TEST_F(DeepSeaAdventureTest, ManualTerminalStateReset) {
+    State s(2);
+    
+    auto& players = s.getPlayers();
+    
+    TreasureStack loot1 = {0, 1}; // Level 0 and Level 1
+    players[0].getTreasures().push_back(loot1);
+    players[0].returnToSubmarine(); 
+
+    TreasureStack loot2 = {2, 3}; 
+    players[1].getTreasures().push_back(loot2);
+    players[1].move(20, const_cast<Board&>(s.getBoard())); // Move them out deep
+
+    s.reset();
+
+    EXPECT_EQ(s.getOxygen(), 25);
+    EXPECT_EQ(s.getPlayers()[0].getPosition(), 0);
+    EXPECT_EQ(s.getPlayers()[1].getPosition(), 0);
+    
+    EXPECT_GT(s.getPlayers()[0].getPoints(), 0);
+    
+    EXPECT_EQ(s.getPlayers()[1].getTreasures().size(), 0);
+    EXPECT_FALSE(s.getPlayers()[1].getIsDead());
+}
+
+TEST_F(DeepSeaAdventureTest, TreasureRedistributionStacksCorrectly) {
+    State s(1); 
+    auto& p = s.getPlayers()[0];
+    
+    p.getTreasures().push_back({1});
+    p.getTreasures().push_back({1});
+    p.getTreasures().push_back({1});
+    p.getTreasures().push_back({1});
+    
+    p.move(10, const_cast<Board&>(s.getBoard()));
+
+    s.redistributeTreasure();
+
+    auto& tiles = const_cast<Board&>(s.getBoard()).getTiles();
+    
+    ASSERT_GE(tiles.size(), 2) << "Board should have at least 2 new tiles.";
+    
+    EXPECT_EQ(tiles.back().treasure.size(), 1) << "The last stack should have the remainder (1).";
+    
+    EXPECT_EQ(tiles[tiles.size() - 2].treasure.size(), 3) << "The penultimate stack should be full (3).";
+    
+    EXPECT_EQ(p.getTreasures().size(), 0);
 }

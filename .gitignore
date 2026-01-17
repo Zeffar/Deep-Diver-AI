@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+deep_sea_cli.o
+deep_sea_cli
+environment.o
+.gitignore
+mcts.o
+heuristic_bot.o
+parallel_mcts.o
+pure_mcts.o
