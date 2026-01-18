@@ -5,10 +5,10 @@
 #include <cmath>
 #include <algorithm>
 #include "environment.hpp"
-#include "parallel_mcts.hpp"
+#include "pure_mcts.hpp"
 #include "heuristic_bot.hpp"
 
-// Player types: 0 = Parallel MCTS, 1 = Heuristic Bot
+// Player types: 0 = Pure MCTS, 1 = Heuristic Bot
 struct GameResult
 {
     int mctsScore;
@@ -17,11 +17,11 @@ struct GameResult
 };
 
 MoveType getAIMove(State &state, int playerNum, int numPlayers, bool movedThisTurn,
-                   ParallelMCTS &mcts, HeuristicBot &heuristic, int playerType)
+                   PureMCTS &mcts, HeuristicBot &heuristic, int playerType)
 {
     if (playerType == 0)
     {
-        // Parallel MCTS
+        // Pure MCTS
         return mcts.findBestMove(state, playerNum, movedThisTurn);
     }
     else
@@ -31,7 +31,7 @@ MoveType getAIMove(State &state, int playerNum, int numPlayers, bool movedThisTu
     }
 }
 
-GameResult runGame(int mctsPlayerIndex, int heuristicPlayerIndex)
+GameResult runGame(int mctsPlayerIndex, int heuristicPlayerIndex, int rollouts)
 {
     const int numPlayers = 2;
     Tile::resetValuePools();
@@ -43,7 +43,7 @@ GameResult runGame(int mctsPlayerIndex, int heuristicPlayerIndex)
     playerTypes[mctsPlayerIndex] = 0;
     playerTypes[heuristicPlayerIndex] = 1;
 
-    ParallelMCTS mcts(numPlayers, 100000);
+    PureMCTS mcts(numPlayers, rollouts);
     HeuristicBot heuristic(numPlayers);
 
     while (true)
@@ -127,12 +127,26 @@ GameResult runGame(int mctsPlayerIndex, int heuristicPlayerIndex)
 int main(int argc, char *argv[])
 {
     int numGames = 100;
-    if (argc > 1)
+    int rollouts = 1000;
+
+    for (int i = 1; i < argc; i++)
     {
-        numGames = std::atoi(argv[1]);
+        std::string arg = argv[i];
+        if (arg == "--games" && i + 1 < argc)
+            numGames = std::atoi(argv[++i]);
+        else if (arg == "--rollouts" && i + 1 < argc)
+            rollouts = std::atoi(argv[++i]);
+        else if (arg == "--help")
+        {
+            std::cout << "Usage: " << argv[0] << " [options]\n"
+                      << "  --games N     Number of games to play (default: 100)\n"
+                      << "  --rollouts N  Rollouts per move for Pure MCTS (default: 1000)\n";
+            return 0;
+        }
     }
 
-    std::cout << "Running " << numGames << " games: Parallel MCTS vs Heuristic Bot\n";
+    std::cout << "Running " << numGames << " games: Pure MCTS vs Heuristic Bot\n";
+    std::cout << "Pure MCTS rollouts per move: " << rollouts << "\n";
     std::cout << "=========================================================\n\n";
 
     std::vector<GameResult> results;
@@ -150,10 +164,10 @@ int main(int argc, char *argv[])
         int heuristicPlayerIndex = 1 - mctsPlayerIndex;
 
         std::cout << "Game " << std::setw(3) << (game + 1) << "/" << numGames;
-        std::cout << " (MCTS=P" << (mctsPlayerIndex + 1) << ", Heuristic=P" << (heuristicPlayerIndex + 1) << ")";
+        std::cout << " (PureMCTS=P" << (mctsPlayerIndex + 1) << ", Heuristic=P" << (heuristicPlayerIndex + 1) << ")";
         std::cout.flush();
 
-        GameResult result = runGame(mctsPlayerIndex, heuristicPlayerIndex);
+        GameResult result = runGame(mctsPlayerIndex, heuristicPlayerIndex, rollouts);
         results.push_back(result);
 
         mctsScores.push_back(result.mctsScore);
@@ -166,11 +180,11 @@ int main(int argc, char *argv[])
         else
             ties++;
 
-        std::cout << " | MCTS: " << std::setw(3) << result.mctsScore;
+        std::cout << " | PureMCTS: " << std::setw(3) << result.mctsScore;
         std::cout << " | Heuristic: " << std::setw(3) << result.heuristicScore;
         std::cout << " | Winner: ";
         if (result.winner == 0)
-            std::cout << "MCTS";
+            std::cout << "PureMCTS";
         else if (result.winner == 1)
             std::cout << "Heuristic";
         else
@@ -203,7 +217,7 @@ int main(int argc, char *argv[])
     std::cout << "=========================================================\n\n";
 
     std::cout << "WIN RATES:\n";
-    std::cout << "  Parallel MCTS:  " << mctsWins << " wins (" << std::fixed << std::setprecision(1)
+    std::cout << "  Pure MCTS:      " << mctsWins << " wins (" << std::fixed << std::setprecision(1)
               << (100.0 * mctsWins / numGames) << "%)\n";
     std::cout << "  Heuristic Bot:  " << heuristicWins << " wins (" << std::fixed << std::setprecision(1)
               << (100.0 * heuristicWins / numGames) << "%)\n";
@@ -211,7 +225,7 @@ int main(int argc, char *argv[])
               << (100.0 * ties / numGames) << "%)\n\n";
 
     std::cout << "SCORE STATISTICS:\n";
-    std::cout << "  Parallel MCTS:\n";
+    std::cout << "  Pure MCTS:\n";
     std::cout << "    Average: " << std::fixed << std::setprecision(2) << mctsAvg << "\n";
     std::cout << "    Std Dev: " << std::fixed << std::setprecision(2) << mctsStdDev << "\n";
     std::cout << "    Min/Max: " << mctsMin << " / " << mctsMax << "\n\n";
