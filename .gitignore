@@ -213,3 +213,5 @@ mcts.o
 heuristic_bot.o
 parallel_mcts.o
 pure_mcts.o
+benchmark.o
+.gitignore

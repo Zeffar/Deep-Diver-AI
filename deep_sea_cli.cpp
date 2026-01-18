@@ -261,7 +261,7 @@ MoveType getAIMove(State &state, int playerNum, int numPlayers, bool movedThisTu
         std::cout << "\n  " << PLAYER_COLORS[playerNum] << Color::BOLD
                   << "=== AI Player " << (playerNum + 1) << " (MCTS) is thinking... ===" << Color::RESET << "\n";
 
-        MCTS mcts(numPlayers, 50000); // 50k iterations
+        MCTS mcts(numPlayers, 10000000); // 50k iterations
         MoveType bestMove = mcts.findBestMove(state, playerNum, movedThisTurn);
 
         std::cout << "  AI chooses: " << moveTypeToString(bestMove) << "\n";

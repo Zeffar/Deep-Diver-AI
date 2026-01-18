@@ -51,7 +51,7 @@ MoveType HeuristicBot::findBestMove(const State &state, int playerIndex, bool mo
         // Rule 4: Pick at most 1 other treasure
         if (hasMove(COLLECT_TREASURE) &&
             treasureCount < 2 &&
-            oxygen > position)
+            oxygen > 2*position)
         {
             return COLLECT_TREASURE;
         }

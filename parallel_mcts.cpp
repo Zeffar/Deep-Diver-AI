@@ -127,7 +127,7 @@ std::array<double, MAX_PLAYERS> MCTSWorker::simulate(ParallelMCTSNode *node)
     State simState = node->state;
     bool movedThisTurn = node->movedThisTurn;
 
-    int maxSteps = 500; 
+    int maxSteps = 500;
     int steps = 0;
 
     while (!(simState.isTerminal() && simState.isLastRound()) && steps < maxSteps)
@@ -144,6 +144,39 @@ std::array<double, MAX_PLAYERS> MCTSWorker::simulate(ParallelMCTSNode *node)
             steps++;
             continue;
         }
+
+        const Player &currentPlayer = simState.getPlayers()[simState.getCurrentPlayerIndex()];
+        int treasureCount = static_cast<int>(const_cast<Player &>(currentPlayer).getTreasures().size());
+        int position = currentPlayer.getPosition();
+        int oxygen = simState.getOxygen();
+
+        if (treasureCount >= 2)
+        {
+            auto it = std::find(moves.begin(), moves.end(), COLLECT_TREASURE);
+            if (it != moves.end())
+                moves.erase(it);
+
+            if (oxygen < position)
+            {
+                auto dropIt = std::find(moves.begin(), moves.end(), DROP_TREASURE);
+                if (dropIt != moves.end())
+                {
+                    moves = {DROP_TREASURE};
+                }
+            }
+        }
+        else if (treasureCount == 1)
+        {
+            if (oxygen <= position)
+            {
+                auto it = std::find(moves.begin(), moves.end(), COLLECT_TREASURE);
+                if (it != moves.end())
+                    moves.erase(it);
+            }
+        }
+
+        if (moves.empty())
+            moves.push_back(LEAVE_TREASURE);
 
         MoveType move = getRandomMove(moves);
 
@@ -238,12 +271,12 @@ MoveType ParallelMCTS::findBestMove(const State &state, int playerIndex, bool mo
 
     if (moves.size() == 1)
     {
-        std::cerr << "[ParallelMCTS] Only 1 move available, skipping search\n";
+        // std::cerr << "[ParallelMCTS] Only 1 move available, skipping search\n";
         return moves[0];
     }
 
-    std::cerr << "[ParallelMCTS] Running " << (iterationsPerThread * numThreads)
-              << " iterations across " << numThreads << " threads...\n";
+    // std::cerr << "[ParallelMCTS] Running " << (iterationsPerThread * numThreads)
+    //           << " iterations across " << numThreads << " threads...\n";
 
     Tile::useDeterministicValues = true;
 
@@ -283,7 +316,7 @@ MoveType ParallelMCTS::findBestMove(const State &state, int playerIndex, bool mo
     int bestVisits = -1;
     double bestWinRate = -1.0;
 
-    std::cerr << "[ParallelMCTS] Move statistics:\n";
+    // std::cerr << "[ParallelMCTS] Move statistics:\n";
     for (const auto &[move, stats] : aggregated)
     {
         double winRate = stats.totalVisits > 0 ? stats.totalWins / stats.totalVisits : 0.0;
@@ -313,8 +346,8 @@ MoveType ParallelMCTS::findBestMove(const State &state, int playerIndex, bool mo
             moveName = "UNKNOWN";
         }
 
-        std::cerr << "  " << moveName << ": visits=" << stats.totalVisits
-                  << ", winRate=" << (winRate * 100.0) << "%\n";
+        // std::cerr << "  " << moveName << ": visits=" << stats.totalVisits
+        //           << ", winRate=" << (winRate * 100.0) << "%\n";
 
         if (stats.totalVisits > bestVisits ||
             (stats.totalVisits == bestVisits && winRate > bestWinRate))
