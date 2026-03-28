@@ -3,59 +3,81 @@
 # ==========================================
 
 CXX      = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -O3
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -O3 -Icpp/include
 # GTest requires pthread and the gtest libraries
 LDFLAGS  = -lgtest -lgtest_main -pthread
 
+SRCDIR   = cpp/src
+APPDIR   = cpp/apps
+BUILDDIR = build
+BINDIR   = bin
+
 # Executable names
-TARGET = run_tests
-CLI    = deep_sea_cli
-BENCH  = benchmark
-TIMING = timing_benchmark
+TARGET = $(BINDIR)/run_tests
+CLI    = $(BINDIR)/deep_sea_cli
+BENCH  = $(BINDIR)/benchmark
+TIMING = $(BINDIR)/timing_benchmark
 
-# Source files
-TEST_SRCS = tests.cpp environment.cpp
-CLI_SRCS  = deep_sea_cli.cpp environment.cpp mcts.cpp pure_mcts.cpp parallel_mcts.cpp heuristic_bot.cpp
-BENCH_SRCS = benchmark.cpp environment.cpp pure_mcts.cpp heuristic_bot.cpp
-TIMING_SRCS = timing_benchmark.cpp environment.cpp mcts.cpp parallel_mcts.cpp
+# Common source groups
+CORE_SRCS = \
+	$(SRCDIR)/environment.cpp \
+	$(SRCDIR)/mcts.cpp \
+	$(SRCDIR)/pure_mcts.cpp \
+	$(SRCDIR)/parallel_mcts.cpp \
+	$(SRCDIR)/heuristic_bot.cpp
 
-# Object files
-TEST_OBJS = $(TEST_SRCS:.cpp=.o)
-CLI_OBJ   = deep_sea_cli.o
-ENV_OBJ   = environment.o
-MCTS_OBJ  = mcts.o
-PURE_MCTS_OBJ = pure_mcts.o
-PARALLEL_MCTS_OBJ = parallel_mcts.o
-HEURISTIC_BOT_OBJ = heuristic_bot.o
+TEST_SRCS  = $(APPDIR)/tests.cpp $(SRCDIR)/environment.cpp
+CLI_SRCS   = $(APPDIR)/deep_sea_cli.cpp $(CORE_SRCS)
+BENCH_SRCS = $(APPDIR)/benchmark.cpp $(SRCDIR)/environment.cpp $(SRCDIR)/pure_mcts.cpp $(SRCDIR)/heuristic_bot.cpp
+TIMING_SRCS = $(APPDIR)/timing_benchmark.cpp $(SRCDIR)/environment.cpp $(SRCDIR)/mcts.cpp $(SRCDIR)/parallel_mcts.cpp
 
-HEADERS     = environment.hpp mcts.hpp pure_mcts.hpp parallel_mcts.hpp heuristic_bot.hpp
+HEADERS = $(wildcard cpp/include/*.hpp)
+
+TEST_OBJS = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(TEST_SRCS))
+CLI_OBJS = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(CLI_SRCS))
+BENCH_OBJS = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(BENCH_SRCS))
+
+TIMING_AVAILABLE := $(wildcard $(APPDIR)/timing_benchmark.cpp)
+ifneq ($(TIMING_AVAILABLE),)
+TIMING_OBJS = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(TIMING_SRCS))
+ALL_TARGETS = $(TARGET) $(CLI) $(BENCH) $(TIMING)
+else
+ALL_TARGETS = $(TARGET) $(CLI) $(BENCH)
+endif
 
 # Default rule: build both executables
-all: $(TARGET) $(CLI) $(BENCH) $(TIMING)
+all: $(ALL_TARGETS)
 
 # Rule to link test executable
-$(TARGET): tests.o environment.o
-	$(CXX) $(CXXFLAGS) -o $(TARGET) tests.o environment.o $(LDFLAGS)
+$(TARGET): $(TEST_OBJS) | $(BINDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $(TEST_OBJS) $(LDFLAGS)
 
 # Rule to link CLI game executable
-$(CLI): deep_sea_cli.o environment.o mcts.o pure_mcts.o parallel_mcts.o heuristic_bot.o
-	$(CXX) $(CXXFLAGS) -o $(CLI) deep_sea_cli.o environment.o mcts.o pure_mcts.o parallel_mcts.o heuristic_bot.o -pthread
+$(CLI): $(CLI_OBJS) | $(BINDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $(CLI_OBJS) -pthread
 
 # Rule to link benchmark executable
-$(BENCH): benchmark.o environment.o pure_mcts.o heuristic_bot.o
-	$(CXX) $(CXXFLAGS) -o $(BENCH) benchmark.o environment.o pure_mcts.o heuristic_bot.o -pthread
+$(BENCH): $(BENCH_OBJS) | $(BINDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $(BENCH_OBJS) -pthread
 
 # Rule to link timing benchmark executable
-$(TIMING): timing_benchmark.o environment.o mcts.o parallel_mcts.o
-	$(CXX) $(CXXFLAGS) -o $(TIMING) timing_benchmark.o environment.o mcts.o parallel_mcts.o -pthread
+ifneq ($(TIMING_AVAILABLE),)
+$(TIMING): $(TIMING_OBJS) | $(BINDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $(TIMING_OBJS) -pthread
+endif
 
 # Rule to compile .cpp files into .o files
-%.o: %.cpp $(HEADERS)
+$(BUILDDIR)/%.o: %.cpp $(HEADERS)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(BINDIR):
+	@mkdir -p $(BINDIR)
 
 # Clean up build files
 clean:
-	rm -f *.o $(TARGET) $(CLI) $(BENCH)
+	rm -rf $(BUILDDIR) $(BINDIR)
+	rm -f *.o run_tests deep_sea_cli benchmark timing_benchmark
 
 # Run tests
 run: $(TARGET)
