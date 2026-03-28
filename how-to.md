@@ -1,4 +1,4 @@
-# How to Build and Run Deep Sea Adventure
+# How to Build and Run Deep Sea Adventure (this is ai generated, ignore)
 
 This guide outlines the steps required to set up and run the application from a clean, new environment.
 

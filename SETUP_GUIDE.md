@@ -1,4 +1,4 @@
-# Deep Sea Adventure - Complete Setup Guide
+# Deep Sea Adventure - Complete Setup Guide (AI generated, ignore please)
 
 This project consists of two parts:
 1.  **Backend Logic (C++)**: The core game mechanics implemented in C++.
